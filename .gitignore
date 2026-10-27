@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+
+# Project data (video uploads, frames, masks, outputs)
+data/uploads/
+data/frames/
+data/masks/
+data/outputs/
+
+# Frontend
+node_modules/
