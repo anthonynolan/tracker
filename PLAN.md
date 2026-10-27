@@ -45,6 +45,7 @@ linearly interpolate bboxes for intermediate frames.
   (`confidence` optional — API returns no score; spike 2026-10-27, accepted.)
 - Track `{ videoId, prompt, keyframes: Keyframe[], interpolatedBoxes: BBox[] }`
 - Job `{ jobId, type, status, progress, sam3Calls }`
+- Project `{ projectId, name, createdAt, videoIds[] }`
 
 ## API
 
@@ -56,6 +57,9 @@ linearly interpolate bboxes for intermediate frames.
 - `POST /api/videos/{videoId}/render { trackId, padding, aspectRatio }` -> `{ outputUrl }`
 - `GET /api/videos/{videoId}/status`
 - `GET /api/videos/{videoId}/output`
+- `POST /api/videos/{videoId}/segment/selected {prompt, frameIndices[]}` -> re-segment subset
+- `GET /api/videos/{videoId}/segment/stream` (SSE, no-batch progressive path)
+- `GET /api/projects`, `POST /api/projects`, `GET /api/projects/{projectId}`
 
 ## Repo Layout (target)
 
@@ -69,22 +73,25 @@ tracker/
     config.py
     main.py
     routers/videos.py
+    routers/projects.py
     services/video_service.py
     services/frame_service.py
     services/sam3_service.py
     services/track_builder.py
     services/render_service.py
     services/storage.py
+    services/project_service.py
     models/schemas.py
   frontend/
     package.json, vite.config.ts
     src/App.tsx, api/client.ts
-    src/components/Dropzone.tsx, VideoPreview.tsx, KeyframeStrip.tsx, Timeline.tsx
+    src/components/Dropzone.tsx, VideoPreview.tsx, KeyframeGrid.tsx, Timeline.tsx
   data/
     uploads/{videoId}/original.mp4 + meta.json
     frames/{videoId}/{frameIdx:06d}.jpg
     masks/{videoId}/{frameIdx:06d}.png
     outputs/{videoId}/cropped.mp4 + track.json
+    projects/{projectId}.json
 ```
 
 ## Current State (2026-10-27)
@@ -143,12 +150,15 @@ Verify: upload `data/dumbbell_revolution.mp4` -> `meta.json` correct, frontend p
 ## Phase 2 — Frame Extraction + Sampling
 
 Tasks:
-- [ ] `backend/services/frame_service.py`: `getSampleFrameIndices(totalFrames, numSamples=15)`
+- [x] `backend/services/frame_service.py`: `getSampleFrameIndices(totalFrames, numSamples=15)`
       evenly spaced, inclusive of first/last, clamp when `totalFrames < N`. No SAM3.
-- [ ] Extract ONLY the sampled keyframes via ffmpeg to `data/frames/{videoId}/`
+- [x] Extract ONLY the sampled keyframes via ffmpeg to `data/frames/{videoId}/`
       (fix frames added on demand in Phase 6 land in the same dir). No all-frame
       extraction — preview/scrub plays the mp4; overlay draws on canvas.
-- [ ] `GET /api/videos/{videoId}/frames` -> keyframe URLs/indices (incl. fix frames).
+      (Extract-on-first-read via `GET /frames?numSamples=`; idempotent skip of
+      existing files; steps back past EOF when the estimated frame count
+      overshoots — ffmpeg exits 0 with no output there.)
+- [x] `GET /api/videos/{videoId}/frames` -> keyframe URLs/indices (incl. fix frames).
 
 Files to touch: `backend/services/frame_service.py`, `backend/routers/videos.py`.
 
@@ -157,12 +167,16 @@ Verify: unit test e.g. 100 frames / 5 -> `[0,25,50,75,99]`; exactly N JPEGs on d
 ## Phase 3 — SAM3 Text-Prompt Segmentation (REAL, no stub)
 
 Tasks:
-- [ ] `backend/services/sam3_service.py`: `class SAM3Service(api_key=...)`
+- [x] `backend/services/sam3_service.py`: `class SAM3Service(api_key=...)`
       (or generic `MetaAIService`), `segment(image_path, text_prompt)`
       -> `{bbox 0-1, mask, confidence}`, save mask to `data/masks/{videoId}/`.
-- [ ] `POST /api/videos/{videoId}/segment {prompt, numSamples?}`: SAM3 ONLY on N keyframes,
-      return `{keyframes}`, track `sam3Calls`.
-- [ ] Frontend prompt box + `KeyframeStrip.tsx` with canvas bbox overlay. Re-run allowed.
+      (Returns None on no-detection; frames run sequentially in V1.)
+- [x] `POST /api/videos/{videoId}/segment {prompt, numSamples?}`: SAM3 ONLY on N keyframes,
+      return `{keyframes}`, track `sam3Calls`. (Misses kept explicit as
+      `bbox/maskPath: null`; `keyframes.json` persisted per video; SAM3 errors
+      surface as 502 without killing the run on misses.)
+- [x] Frontend prompt box + `KeyframeStrip.tsx` with canvas bbox overlay. Re-run allowed.
+      (Overlay is a positioned div, not canvas — same visual result, less code.)
 
 Integration (settled from user-provided example, 2026-10-27):
 - Base `https://api.meta.ai/v1`; auth `Authorization: Bearer $MODEL_API_KEY`
@@ -260,6 +274,47 @@ Tasks:
 Files to touch: `backend/services/storage.py`, all services/routers using filesystem.
 
 Verify: Phase 1-6 flows pass unchanged with abstraction.
+
+---
+
+## Phase 8 — Review Grid + Selective Re-run + Projects
+
+Tasks:
+- [ ] `frontend/src/components/KeyframeGrid.tsx`: responsive grid replacing the
+      `KeyframeStrip` band. Each cell shows its keyframe + bbox overlay (or an
+      explicit "no detection" state) with single / multi / select-all.
+      Strip component removed once the grid lands.
+- [ ] SAM3 batch research (no code until answered): can one `/responses` call
+      take multiple images (multiple `input_image` parts,
+      `video_segmentation_format`, or another endpoint)? Record the finding here.
+      If batch works, segment keyframes in batches; if not, take the progressive
+      path below.
+- [ ] Progressive results (no-batch path): stream per-image results to the grid
+      as each `segment()` completes instead of waiting for all N. Transport: SSE
+      `GET /api/videos/{videoId}/segment/stream` (recommended) or polling —
+      decided at implementation.
+- [ ] `POST /api/videos/{videoId}/segment/selected {prompt, frameIndices[]}`:
+      re-segment ONLY the selected keyframes with a (possibly modified) prompt,
+      update `keyframes.json` for those frames, return `{keyframes, sam3Calls}`.
+      Powers the fix-one-then-rerun-all loop: retry a miss solo, then re-run
+      the batch with the winning prompt.
+- [ ] Projects: `backend/services/project_service.py` + `routers/projects.py`.
+      A default project is auto-created on first app use; `GET /api/projects`
+      lists, `GET /api/projects/{projectId}` restores videos + keyframes +
+      prompt state. Persisted through the Phase 7 `Storage` interface
+      (`data/projects/{projectId}.json` under filesystem storage).
+- [ ] Frontend project switcher: default project opens automatically; user can
+      create/switch projects and resume work.
+
+Files to touch: `backend/routers/videos.py`, `backend/routers/projects.py`,
+`backend/services/project_service.py`, `backend/services/storage.py`,
+`frontend/src/components/KeyframeGrid.tsx`, `frontend/src/App.tsx`,
+`frontend/src/api/client.ts`.
+
+Verify: grid shows N cells with misses marked; select-1 re-run costs 1 SAM3 call;
+select-all re-run costs N; progressive cells populate before the run finishes
+(no-batch path); batch finding recorded; fresh start yields a default project;
+reopening a project restores its state.
 
 ---
 

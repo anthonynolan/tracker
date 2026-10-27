@@ -33,6 +33,7 @@ Video { videoId, width, height, fps, duration, totalFrames }
 Keyframe { frameIdx, timestamp, bbox: {x,y,w,h} normalized 0-1, maskPath, prompt, confidence? optional (API returns no score; spike 2026-10-27) }
 Track { videoId, prompt, keyframes: Keyframe[], interpolatedBoxes: BBox[] }
 Job { jobId, type, status, progress, sam3Calls }
+Project { projectId, name, createdAt, videoIds }
 
 ## API
 POST /api/videos/upload -> { videoId, metadata }
@@ -43,6 +44,9 @@ POST /api/videos/{videoId}/keyframes { frameIdx } -> SAM3 on single frame, inser
 POST /api/videos/{videoId}/render { trackId, padding, aspectRatio } -> { outputUrl }
 GET /api/videos/{videoId}/status
 GET /api/videos/{videoId}/output
+POST /api/videos/{videoId}/segment/selected {prompt, frameIndices[]} -> re-segment subset
+GET /api/videos/{videoId}/segment/stream (SSE progressive results)
+GET /api/projects, POST /api/projects, GET /api/projects/{projectId}
 
 ## Phases
 
@@ -75,6 +79,12 @@ GET /api/videos/{videoId}/output
 
 ### Phase 7: Storage Abstraction
 - Storage interface, filesystem impl, prep for MongoDB
+
+### Phase 8: Review Grid + Selective Re-run + Projects
+- Keyframe grid (replaces strip) with single/multi/all selection, misses marked
+- Batch-or-progressive SAM3: research batch support; if none, stream per-image results live
+- Selective re-run endpoint; fix-one-then-rerun-all prompt loop
+- Projects with auto-created default; reopen and resume work
 
 ## Constraints
 - Work ONE phase at a time. Stop and wait for approval.

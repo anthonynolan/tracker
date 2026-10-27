@@ -18,7 +18,7 @@ UPLOAD_DIRNAME = "uploads"
 _VIDEO_ID_RE = re.compile(r"[0-9a-f]{32}")
 
 
-def _ffmpeg_exe() -> str:
+def ffmpeg_exe() -> str:
     return shutil.which("ffmpeg") or imageio_ffmpeg.get_ffmpeg_exe()
 
 
@@ -57,7 +57,7 @@ def _probe_with_ffprobe(ffprobe: str, path: Path) -> dict:
 
 
 def _probe_with_ffmpeg(path: Path) -> dict:
-    proc = subprocess.run([_ffmpeg_exe(), "-i", str(path)],
+    proc = subprocess.run([ffmpeg_exe(), "-i", str(path)],
                           capture_output=True, text=True, timeout=60)
     err = proc.stderr
     match = re.search(r"Duration: (\d+):(\d+):([\d.]+)", err)
@@ -102,3 +102,11 @@ def get_metadata(video_id: str) -> VideoMetadata | None:
     if not meta_file.exists():
         return None
     return VideoMetadata.model_validate_json(meta_file.read_text())
+
+
+def get_original_path(video_id: str) -> Path | None:
+    """Locate the stored original file for an upload, if any."""
+    if not _VIDEO_ID_RE.fullmatch(video_id):
+        return None
+    matches = sorted((DATA_DIR / UPLOAD_DIRNAME / video_id).glob("original.*"))
+    return matches[0] if matches else None
