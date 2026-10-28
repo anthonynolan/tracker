@@ -46,6 +46,28 @@ export interface SegmentResponse {
   sam3Calls: number;
 }
 
+export interface TrackResponse {
+  trackId: string;
+  videoId: string;
+  prompt: string;
+  numFrames: number;
+  keyframeCount: number;
+}
+
+export interface TrackData {
+  videoId: string;
+  prompt: string;
+  keyframes: Keyframe[];
+  interpolatedBoxes: BBox[];
+}
+
+export interface RenderResponse {
+  outputUrl: string;
+  width: number;
+  height: number;
+  numFrames: number;
+}
+
 async function failMessage(resp: Response, fallback: string): Promise<string> {
   const body = await resp.json().catch(() => null);
   const detail = body?.Detail ?? body?.detail ?? body?.message;
@@ -83,4 +105,32 @@ export async function segmentVideo(
   });
   if (!resp.ok) throw new Error(await failMessage(resp, "segment failed"));
   return resp.json() as Promise<SegmentResponse>;
+}
+
+export async function buildTrack(videoId: string, prompt: string): Promise<TrackResponse> {
+  const resp = await fetch(`/api/videos/${videoId}/track`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!resp.ok) throw new Error(await failMessage(resp, "track failed"));
+  return resp.json() as Promise<TrackResponse>;
+}
+
+export async function fetchTrack(videoId: string): Promise<TrackData> {
+  const resp = await fetch(`/api/videos/${videoId}/track`);
+  if (!resp.ok) throw new Error(await failMessage(resp, "track fetch failed"));
+  return resp.json() as Promise<TrackData>;
+}
+
+export async function renderVideo(
+  videoId: string, trackId: string, padding: number, aspectRatio?: string,
+): Promise<RenderResponse> {
+  const resp = await fetch(`/api/videos/${videoId}/render`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trackId, padding, aspectRatio: aspectRatio || null }),
+  });
+  if (!resp.ok) throw new Error(await failMessage(resp, "render failed"));
+  return resp.json() as Promise<RenderResponse>;
 }

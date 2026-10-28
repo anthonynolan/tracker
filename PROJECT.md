@@ -40,6 +40,7 @@ POST /api/videos/upload -> { videoId, metadata }
 GET /api/videos/{videoId}/frames (keyframes incl. fix frames)
 POST /api/videos/{videoId}/segment { prompt, numSamples? } -> runs SAM3 on keyframes -> { keyframes }
 POST /api/videos/{videoId}/track { prompt } -> builds interpolated track -> { trackId }
+GET /api/videos/{videoId}/track -> reads track.json
 POST /api/videos/{videoId}/keyframes { frameIdx } -> SAM3 on single frame, insert, re-interpolate
 POST /api/videos/{videoId}/render { trackId, padding, aspectRatio } -> { outputUrl }
 GET /api/videos/{videoId}/status
@@ -85,6 +86,11 @@ GET /api/projects, POST /api/projects, GET /api/projects/{projectId}
 - Batch-or-progressive SAM3: research batch support; if none, stream per-image results live
 - Selective re-run endpoint; fix-one-then-rerun-all prompt loop
 - Projects with auto-created default; reopen and resume work
+- Synced original/rendered playback: one play button, same frame both sides
+
+### Phase 9: README + Screenshots
+- README: setup, quickstart, walkthrough, layout, troubleshooting
+- Screenshots captured from the running app under docs/screenshots/
 
 ## Constraints
 - Work ONE phase at a time. Stop and wait for approval.

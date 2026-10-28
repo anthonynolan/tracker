@@ -6,6 +6,8 @@ import math
 import subprocess
 from pathlib import Path
 
+from PIL import Image
+
 from backend.config import DATA_DIR
 from backend.services import video_service
 
@@ -27,6 +29,15 @@ def getSampleFrameIndices(total_frames: int, num_samples: int = 15) -> list[int]
         return list(range(total_frames))
     step = total_frames / (num_samples - 1)
     return [*(math.floor(i * step) for i in range(num_samples - 1)), total_frames - 1]
+
+
+def get_display_size(video_id: str) -> tuple[int, int] | None:
+    """Display-space (W, H) measured from the first extracted keyframe JPEG."""
+    frames = sorted((DATA_DIR / FRAMES_DIRNAME / video_id).glob("*.jpg"))
+    if not frames:
+        return None
+    with Image.open(frames[0]) as img:
+        return img.size
 
 
 def ensure_keyframes(video_id: str, num_samples: int = 15) -> list[dict] | None:

@@ -75,3 +75,43 @@ class SegmentResponse(BaseModel):
 
     keyframes: list[Keyframe]
     sam3_calls: int = Field(alias="sam3Calls")
+
+
+class TrackRequest(BaseModel):
+    prompt: str = Field(min_length=1)
+
+
+class TrackResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    track_id: str = Field(alias="trackId")
+    video_id: str = Field(alias="videoId")
+    prompt: str
+    num_frames: int = Field(alias="numFrames")
+    keyframe_count: int = Field(alias="keyframeCount")
+
+
+class TrackData(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    video_id: str = Field(alias="videoId")
+    prompt: str
+    keyframes: list[Keyframe]
+    interpolated_boxes: list[BBox] = Field(alias="interpolatedBoxes")
+
+
+class RenderRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    track_id: str = Field(alias="trackId")
+    padding: float = Field(default=0.1, ge=0.0)
+    aspect_ratio: str | None = Field(default=None, alias="aspectRatio")
+
+
+class RenderResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    output_url: str = Field(alias="outputUrl")
+    width: int
+    height: int
+    num_frames: int = Field(alias="numFrames")

@@ -13,8 +13,9 @@ import Dropzone from "./components/Dropzone";
 import VideoPreview from "./components/VideoPreview";
 import KeyframeStrip from "./components/KeyframeStrip";
 import type { StripItem } from "./components/KeyframeStrip";
-import { fetchFrames, segmentVideo, uploadVideo } from "./api/client";
-import type { UploadResponse } from "./api/client";
+import Timeline from "./components/Timeline";
+import { buildTrack, fetchFrames, fetchTrack, renderVideo, segmentVideo, uploadVideo } from "./api/client";
+import type { TrackData, UploadResponse } from "./api/client";
 
 export default function App() {
   const [uploading, setUploading] = useState(false);
@@ -25,12 +26,22 @@ export default function App() {
   const [segmenting, setSegmenting] = useState(false);
   const [strip, setStrip] = useState<StripItem[] | null>(null);
   const [calls, setCalls] = useState<number | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [track, setTrack] = useState<TrackData | null>(null);
+  const [trackId, setTrackId] = useState<string | null>(null);
+  const [padding, setPadding] = useState(0.15);
+  const [aspect, setAspect] = useState("");
+  const [rendering, setRendering] = useState(false);
+  const [croppedUrl, setCroppedUrl] = useState<string | null>(null);
 
   async function handleFile(file: File) {
     setUploading(true);
     setError(null);
     setStrip(null);
     setCalls(null);
+    setTrack(null);
+    setTrackId(null);
+    setCroppedUrl(null);
     try {
       setResult(await uploadVideo(file));
     } catch (err) {
@@ -44,6 +55,8 @@ export default function App() {
     if (!result || !prompt.trim()) return;
     setSegmenting(true);
     setError(null);
+    setTrack(null);
+    setCroppedUrl(null);
     try {
       const seg = await segmentVideo(result.videoId, prompt.trim(), numSamples);
       const refs = await fetchFrames(result.videoId, numSamples);
@@ -61,6 +74,36 @@ export default function App() {
     }
   }
 
+  async function handleBuildTrack() {
+    if (!result || !prompt.trim()) return;
+    setBuilding(true);
+    setError(null);
+    setCroppedUrl(null);
+    try {
+      const built = await buildTrack(result.videoId, prompt.trim());
+      setTrackId(built.trackId);
+      setTrack(await fetchTrack(result.videoId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "track failed");
+    } finally {
+      setBuilding(false);
+    }
+  }
+
+  async function handleRender() {
+    if (!result || !trackId) return;
+    setRendering(true);
+    setError(null);
+    try {
+      const rendered = await renderVideo(result.videoId, trackId, padding, aspect.trim());
+      setCroppedUrl(rendered.outputUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "render failed");
+    } finally {
+      setRendering(false);
+    }
+  }
+
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Stack spacing={3}>
@@ -69,14 +112,19 @@ export default function App() {
             Video Cropper
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Upload a video, describe the object, and segment the sampled keyframes.
+            Upload a video, describe the object, segment the keyframes, then build
+            the interpolated track.
           </Typography>
         </Box>
-        <Dropzone onFile={handleFile} disabled={uploading || segmenting} />
+        <Dropzone onFile={handleFile} disabled={uploading || segmenting || building} />
         {uploading && <LinearProgress />}
         {error && <Alert severity="error">{error}</Alert>}
         {result && !uploading && (
-          <VideoPreview originalUrl={result.originalUrl} metadata={result.metadata} />
+          <VideoPreview
+            originalUrl={result.originalUrl}
+            croppedUrl={croppedUrl}
+            metadata={result.metadata}
+          />
         )}
         {result && !uploading && (
           <Stack direction="row" spacing={2} sx={{ alignItems: "flex-start" }}>
@@ -84,7 +132,7 @@ export default function App() {
               label="Prompt"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              disabled={segmenting}
+              disabled={segmenting || building}
               sx={{ flexGrow: 1 }}
             />
             <TextField
@@ -92,11 +140,11 @@ export default function App() {
               type="number"
               value={numSamples}
               onChange={(e) => setNumSamples(Math.max(1, Number(e.target.value) || 15))}
-              disabled={segmenting}
+              disabled={segmenting || building}
               sx={{ width: 120 }}
               slotProps={{ htmlInput: { min: 1 } }}
             />
-            <Button variant="contained" onClick={handleSegment} disabled={segmenting}>
+            <Button variant="contained" onClick={handleSegment} disabled={segmenting || building}>
               Segment
             </Button>
           </Stack>
@@ -115,6 +163,56 @@ export default function App() {
           </Typography>
         )}
         {strip && !segmenting && <KeyframeStrip items={strip} />}
+        {strip && !segmenting && (
+          <Box>
+            <Button variant="contained" onClick={handleBuildTrack} disabled={building}>
+              Build track
+            </Button>
+          </Box>
+        )}
+        {building && <LinearProgress />}
+        {track && !building && result && (
+          <Timeline
+            videoUrl={result.originalUrl}
+            fps={result.metadata.fps}
+            totalFrames={result.metadata.totalFrames}
+            boxes={track.interpolatedBoxes}
+            keyframes={track.keyframes.flatMap((k) =>
+              k.bbox ? [{ frameIdx: k.frameIdx, bbox: k.bbox }] : [],
+            )}
+          />
+        )}
+        {track && !building && (
+          <Stack direction="row" spacing={2} sx={{ alignItems: "flex-start" }}>
+            <TextField
+              label="Padding"
+              type="number"
+              value={padding}
+              onChange={(e) => setPadding(Math.max(0, Number(e.target.value) || 0))}
+              disabled={rendering}
+              sx={{ width: 120 }}
+              slotProps={{ htmlInput: { min: 0, step: 0.05 } }}
+            />
+            <TextField
+              label="Aspect (W:H, blank = auto)"
+              value={aspect}
+              onChange={(e) => setAspect(e.target.value)}
+              disabled={rendering}
+              sx={{ width: 220 }}
+            />
+            <Button variant="contained" onClick={handleRender} disabled={rendering}>
+              Render crop
+            </Button>
+          </Stack>
+        )}
+        {rendering && (
+          <Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Rendering cropped video — re-encoding every frame, this takes a while.
+            </Typography>
+            <LinearProgress />
+          </Box>
+        )}
       </Stack>
     </Container>
   );

@@ -53,6 +53,7 @@ linearly interpolate bboxes for intermediate frames.
 - `GET /api/videos/{videoId}/frames` -> keyframes (incl. user-added fix frames)
 - `POST /api/videos/{videoId}/segment { prompt, numSamples? }` -> `{ keyframes }`
 - `POST /api/videos/{videoId}/track { prompt }` -> `{ trackId }`
+- `GET /api/videos/{videoId}/track` -> `{ videoId, prompt, keyframes, interpolatedBoxes }`
 - `POST /api/videos/{videoId}/keyframes { frameIdx }` -> SAM3 single frame, insert, re-interpolate
 - `POST /api/videos/{videoId}/render { trackId, padding, aspectRatio }` -> `{ outputUrl }`
 - `GET /api/videos/{videoId}/status`
@@ -67,6 +68,8 @@ linearly interpolate bboxes for intermediate frames.
 tracker/
   PROJECT.md
   PLAN.md
+  README.md
+  docs/screenshots/*.png
   .env / .env.example
   pyproject.toml
   backend/
@@ -221,11 +224,19 @@ masks saved (decode via meta-sam-parser, spike-verified). Key never reaches fron
 ## Phase 4 — Tracker (Linear Interpolation)
 
 Tasks:
-- [ ] `backend/services/track_builder.py`: `lerp` x,y,w,h between keyframes for all frames,
+- [x] `backend/services/track_builder.py`: `lerp` x,y,w,h between keyframes for all frames,
       clamp 0-1, optional moving-average smoothing (window 3-5).
-- [ ] `POST /api/videos/{videoId}/track {prompt}` -> write `track.json`
+      (Default on, window 5; misses skipped, edge boxes held, dup indices deduped.)
+- [x] `POST /api/videos/{videoId}/track {prompt}` -> write `track.json`
       `{videoId,prompt,keyframes,interpolatedBoxes}`.
-- [ ] Frontend timeline draws interpolated box on scrub.
+      (`trackId` = `videoId` in V1; prompt must match segmented prompt (400);
+      `track.json` keeps valid keyframes only. Added `GET /track` — the UI and
+      later phases must read back what POST wrote.)
+- [x] Frontend timeline draws interpolated box on scrub.
+      (`Timeline.tsx`: slider + play/pause over the mp4 with overlay box.)
+      Follow-up (2026-10-27): fixed portrait letterboxing (overlay now measures
+      the shrink-wrapped video content, not the element); added red latest-keyframe
+      box beside the green interpolated box plus a legend.
 
 Files to touch: `backend/services/track_builder.py`, `backend/models/schemas.py`,
 `backend/routers/videos.py`, `frontend/src/components/Timeline.tsx`.
@@ -235,14 +246,19 @@ Verify: two-keyframe midpoint correct; `len(interpolatedBoxes) == totalFrames`.
 ## Phase 5 — Render Cropped Video
 
 Tasks:
-- [ ] `backend/services/render_service.py`: FIXED-SIZE window — size = max over
+- [x] `backend/services/render_service.py`: FIXED-SIZE window — size = max over
       interpolated boxes + padding, aspectRatio-enforced, even-px for h264
       (computed once per track); per-frame position = smoothed box center,
       clamped to frame.
-- [ ] `POST /api/videos/{videoId}/render {trackId,padding,aspectRatio}`: single ffmpeg
+- [x] `POST /api/videos/{videoId}/render {trackId,padding,aspectRatio}`: single ffmpeg
       pass, per-frame crop x/y with constant w/h, re-encode with audio ->
       `data/outputs/{videoId}/cropped.mp4`.
-- [ ] Frontend side-by-side original vs cropped.
+      (Implemented as decode→numpy-crop→encode pipes + audio mux: per-frame
+      windows aren't expressible in one crop filter. Renders in display space
+      measured from keyframe JPEGs; `GET /output` now serves the file;
+      `trackId` must equal `videoId` in V1.)
+- [x] Frontend side-by-side original vs cropped.
+      (Render button + padding/aspect inputs; `VideoPreview` splits when cropped.)
 
 Files to touch: `backend/services/render_service.py`, `backend/routers/videos.py`,
 `frontend/src/components/VideoPreview.tsx`.
@@ -305,6 +321,9 @@ Tasks:
       (`data/projects/{projectId}.json` under filesystem storage).
 - [ ] Frontend project switcher: default project opens automatically; user can
       create/switch projects and resume work.
+- [ ] Synced playback for original vs rendered: one common play button drives
+      both videos on the same frame (side-by-side comparison); pause and seek
+      stay in lockstep.
 
 Files to touch: `backend/routers/videos.py`, `backend/routers/projects.py`,
 `backend/services/project_service.py`, `backend/services/storage.py`,
@@ -315,6 +334,27 @@ Verify: grid shows N cells with misses marked; select-1 re-run costs 1 SAM3 call
 select-all re-run costs N; progressive cells populate before the run finishes
 (no-batch path); batch finding recorded; fresh start yields a default project;
 reopening a project restores its state.
+
+---
+
+## Phase 9 — README + Screenshots
+
+Tasks:
+- [ ] Write `README.md`: what the app does, features per phase, prerequisites
+      (`uv`, Python 3.12, Node, system or bundled ffmpeg), env setup
+      (`.env` from `.env.example`), quickstart (backend + frontend commands),
+      usage walkthrough (upload → prompt → segment → track → render → refine),
+      project layout, troubleshooting.
+- [ ] Capture screenshots from the RUNNING app (no mockups): upload/dropzone,
+      segmentation grid with overlays, track timeline, render side-by-side,
+      refinement. Store under `docs/screenshots/`, reference from `README.md`.
+- [ ] Re-verify every README command copy-paste fresh (clean-checkout mindset:
+      `uv sync`, backend start, `npm install`, frontend start, full flow).
+
+Files to touch: `README.md`, `docs/screenshots/*.png`.
+
+Verify: README quickstart works verbatim on a fresh clone (minus the `.env` key);
+screenshots match the current UI; no stale screens from older phases.
 
 ---
 

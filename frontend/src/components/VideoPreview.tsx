@@ -3,10 +3,27 @@ import type { VideoMetadata } from "../api/client";
 
 interface Props {
   originalUrl: string;
+  croppedUrl: string | null;
   metadata: VideoMetadata;
 }
 
-export default function VideoPreview({ originalUrl, metadata }: Props) {
+function LabeledVideo({ label, url }: { label: string; url: string }) {
+  return (
+    <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Typography variant="subtitle2" gutterBottom>
+        {label}
+      </Typography>
+      <Box
+        component="video"
+        src={url}
+        controls
+        sx={{ width: "100%", maxHeight: 480, backgroundColor: "black" }}
+      />
+    </Box>
+  );
+}
+
+export default function VideoPreview({ originalUrl, croppedUrl, metadata }: Props) {
   const rows: Array<[string, string]> = [
     ["File", metadata.filename],
     ["Size", `${metadata.width} x ${metadata.height}`],
@@ -17,12 +34,14 @@ export default function VideoPreview({ originalUrl, metadata }: Props) {
   ];
   return (
     <Stack spacing={2}>
-      <Box
-        component="video"
-        src={originalUrl}
-        controls
-        sx={{ width: "100%", maxHeight: 480, backgroundColor: "black" }}
-      />
+      {croppedUrl ? (
+        <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+          <LabeledVideo label="Original" url={originalUrl} />
+          <LabeledVideo label="Cropped" url={croppedUrl} />
+        </Stack>
+      ) : (
+        <LabeledVideo label="Original" url={originalUrl} />
+      )}
       <Box component="dl" sx={{ display: "grid", gridTemplateColumns: "120px 1fr", rowGap: 0.5, m: 0 }}>
         {rows.map(([term, value]) => (
           <Box key={term} sx={{ display: "contents" }}>
