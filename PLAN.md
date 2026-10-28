@@ -97,20 +97,23 @@ tracker/
     projects/{projectId}.json
 ```
 
-## Current State (2026-10-27)
+## Current State (2026-10-28)
 
-- Empty scaffold: `src/tracker/__init__.py`, `pyproject.toml` with no deps,
-  sample `data/dumbbell_revolution.mp4`. Project-local `.venv` exists (created
-  by grill spike; gitignored, `pyproject.toml` untouched).
-- `.env` has `MODEL_API_KEY`. `.gitignore` already ignores `.env`.
-- `.env.example` currently holds `MODEL_API_KEY=key_here` (Phase 0 standardizes
-  it to `your_key_here`).
-- No system `ffmpeg`/`ffprobe` (ffmpeg binary only inside `.venv` via
-  spike-installed `imageio-ffmpeg`), no `backend/`, no `frontend/`.
+- Phases 0–7 complete: upload/preview, keyframe sampling, real SAM3
+  segmentation, lerp tracking, fixed-window render, fix-frame refinement,
+  storage abstraction. 52/52 backend tests pass; frontend builds clean.
+- Backend: FastAPI (`backend/`); all persistence behind the `Storage`
+  interface (`FileSystemStorage` default, `MongoStorage` stub behind
+  `STORAGE_BACKEND`). Frontend: Vite + React + MUI (`frontend/`).
+- `data/` holds uploads/frames/masks/outputs per video; on-disk layout
+  unchanged since Phase 1. No system ffmpeg/ffprobe — bundled binary via
+  `imageio-ffmpeg` with ffprobe-when-available fallback.
+- Next: Phase 8 (review grid + selective re-run + projects), then Phase 9
+  (README + screenshots).
 
 ---
 
-## Phase 0 — Foundation (with Phase 1)
+## ~~Phase 0 — Foundation (with Phase 1)~~
 
 Tasks:
 - [x] Add backend deps via `uv add fastapi uvicorn python-multipart
@@ -130,7 +133,7 @@ Files to touch: `pyproject.toml`, `uv.lock`, `backend/config.py`, `.gitignore`, 
 
 Verify: `GET /health` OK, config loads without logging key.
 
-## Phase 1 — Upload + Preview
+## ~~Phase 1 — Upload + Preview~~
 
 Tasks:
 - [x] `backend/main.py`: FastAPI app + CORS + static mounts + `/health`.
@@ -150,7 +153,7 @@ Files to touch: `backend/main.py`, `backend/routers/videos.py`,
 
 Verify: upload `data/dumbbell_revolution.mp4` -> `meta.json` correct, frontend plays it.
 
-## Phase 2 — Frame Extraction + Sampling
+## ~~Phase 2 — Frame Extraction + Sampling~~
 
 Tasks:
 - [x] `backend/services/frame_service.py`: `getSampleFrameIndices(totalFrames, numSamples=15)`
@@ -167,7 +170,7 @@ Files to touch: `backend/services/frame_service.py`, `backend/routers/videos.py`
 
 Verify: unit test e.g. 100 frames / 5 -> `[0,25,50,75,99]`; exactly N JPEGs on disk, no others.
 
-## Phase 3 — SAM3 Text-Prompt Segmentation (REAL, no stub)
+## ~~Phase 3 — SAM3 Text-Prompt Segmentation (REAL, no stub)~~
 
 Tasks:
 - [x] `backend/services/sam3_service.py`: `class SAM3Service(api_key=...)`
@@ -221,7 +224,7 @@ Files to touch: `backend/services/sam3_service.py`, `backend/routers/videos.py`,
 Verify: prompt "dumbbell" -> N calls, bboxes 0-1 parsed e2e from live SSE,
 masks saved (decode via meta-sam-parser, spike-verified). Key never reaches frontend.
 
-## Phase 4 — Tracker (Linear Interpolation)
+## ~~Phase 4 — Tracker (Linear Interpolation)~~
 
 Tasks:
 - [x] `backend/services/track_builder.py`: `lerp` x,y,w,h between keyframes for all frames,
@@ -243,7 +246,7 @@ Files to touch: `backend/services/track_builder.py`, `backend/models/schemas.py`
 
 Verify: two-keyframe midpoint correct; `len(interpolatedBoxes) == totalFrames`.
 
-## Phase 5 — Render Cropped Video
+## ~~Phase 5 — Render Cropped Video~~
 
 Tasks:
 - [x] `backend/services/render_service.py`: FIXED-SIZE window — size = max over
@@ -265,7 +268,7 @@ Files to touch: `backend/services/render_service.py`, `backend/routers/videos.py
 
 Verify: output exists, constant dims across frames, has audio, follows smoothed center.
 
-## Phase 6 — Interactive Refinement (Break Interpolation)
+## ~~Phase 6 — Interactive Refinement (Break Interpolation)~~
 
 Tasks:
 - [x] `POST /api/videos/{videoId}/keyframes {frameIdx}`: SAM3 single frame, insert sorted,
@@ -284,7 +287,7 @@ Files to touch: `backend/routers/videos.py`, `backend/services/track_builder.py`
 
 Verify: `sam3Calls +1`, only sub-segments changed.
 
-## Phase 7 — Storage Abstraction
+## ~~Phase 7 — Storage Abstraction~~
 
 Tasks:
 - [x] `backend/services/storage.py`: `Storage` Protocol + `FileSystemStorage`,
