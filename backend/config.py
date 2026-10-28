@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
     model_api_key: SecretStr = Field(alias="MODEL_API_KEY")
+    storage_backend: Literal["filesystem", "mongodb"] = "filesystem"
+    mongo_url: str = "mongodb://localhost:27017"
+    mongo_database: str = "tracker"
 
 
 @lru_cache

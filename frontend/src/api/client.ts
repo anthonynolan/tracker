@@ -34,6 +34,15 @@ export interface Keyframe {
   maskPath: string | null;
   prompt: string;
   confidence: number | null;
+  origin: string;
+}
+
+export interface FixKeyframeResponse {
+  keyframe: Keyframe;
+  sam3Calls: number;
+  trackRebuilt: boolean;
+  rerendered: boolean;
+  outputUrl: string | null;
 }
 
 export interface FrameRef {
@@ -121,6 +130,16 @@ export async function fetchTrack(videoId: string): Promise<TrackData> {
   const resp = await fetch(`/api/videos/${videoId}/track`);
   if (!resp.ok) throw new Error(await failMessage(resp, "track fetch failed"));
   return resp.json() as Promise<TrackData>;
+}
+
+export async function fixKeyframe(videoId: string, frameIdx: number): Promise<FixKeyframeResponse> {
+  const resp = await fetch(`/api/videos/${videoId}/keyframes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ frameIdx }),
+  });
+  if (!resp.ok) throw new Error(await failMessage(resp, "fix failed"));
+  return resp.json() as Promise<FixKeyframeResponse>;
 }
 
 export async function renderVideo(

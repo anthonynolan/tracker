@@ -14,8 +14,18 @@ import VideoPreview from "./components/VideoPreview";
 import KeyframeStrip from "./components/KeyframeStrip";
 import type { StripItem } from "./components/KeyframeStrip";
 import Timeline from "./components/Timeline";
+import type { FixUpdate } from "./components/Timeline";
 import { buildTrack, fetchFrames, fetchTrack, renderVideo, segmentVideo, uploadVideo } from "./api/client";
-import type { TrackData, UploadResponse } from "./api/client";
+import type { Keyframe, TrackData, UploadResponse } from "./api/client";
+
+function upsertStripItem(items: StripItem[] | null, kf: Keyframe, videoId: string): StripItem[] {
+  const url = `/frames/${videoId}/${String(kf.frameIdx).padStart(6, "0")}.jpg`;
+  const item: StripItem = { frameIdx: kf.frameIdx, url, bbox: kf.bbox };
+  if (!items) return [item];
+  return [...items.filter((i) => i.frameIdx !== kf.frameIdx), item].sort(
+    (a, b) => a.frameIdx - b.frameIdx,
+  );
+}
 
 export default function App() {
   const [uploading, setUploading] = useState(false);
@@ -88,6 +98,12 @@ export default function App() {
     } finally {
       setBuilding(false);
     }
+  }
+
+  function handleFixed(update: FixUpdate) {
+    if (update.track) setTrack(update.track);
+    if (result) setStrip((prev) => upsertStripItem(prev, update.keyframe, result.videoId));
+    if (update.outputUrl) setCroppedUrl(`${update.outputUrl}?t=${Date.now()}`);
   }
 
   async function handleRender() {
@@ -173,13 +189,15 @@ export default function App() {
         {building && <LinearProgress />}
         {track && !building && result && (
           <Timeline
+            videoId={result.videoId}
             videoUrl={result.originalUrl}
             fps={result.metadata.fps}
             totalFrames={result.metadata.totalFrames}
             boxes={track.interpolatedBoxes}
             keyframes={track.keyframes.flatMap((k) =>
-              k.bbox ? [{ frameIdx: k.frameIdx, bbox: k.bbox }] : [],
+              k.bbox ? [{ frameIdx: k.frameIdx, bbox: k.bbox, origin: k.origin }] : [],
             )}
+            onFixed={handleFixed}
           />
         )}
         {track && !building && (

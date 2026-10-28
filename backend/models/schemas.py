@@ -61,6 +61,7 @@ class Keyframe(BaseModel):
     mask_path: str | None = Field(default=None, alias="maskPath")
     prompt: str
     confidence: float | None = None
+    origin: str = "sampled"  # sampled | fix (default covers pre-Phase-6 files)
 
 
 class SegmentRequest(BaseModel):
@@ -115,3 +116,19 @@ class RenderResponse(BaseModel):
     width: int
     height: int
     num_frames: int = Field(alias="numFrames")
+
+
+class FixKeyframeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    frame_idx: int = Field(ge=0, alias="frameIdx")
+
+
+class FixKeyframeResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    keyframe: Keyframe
+    sam3_calls: int = Field(alias="sam3Calls")
+    track_rebuilt: bool = Field(alias="trackRebuilt")
+    rerendered: bool
+    output_url: str | None = Field(default=None, alias="outputUrl")

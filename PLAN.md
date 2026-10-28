@@ -268,11 +268,16 @@ Verify: output exists, constant dims across frames, has audio, follows smoothed 
 ## Phase 6 — Interactive Refinement (Break Interpolation)
 
 Tasks:
-- [ ] `POST /api/videos/{videoId}/keyframes {frameIdx}`: SAM3 single frame, insert sorted,
+- [x] `POST /api/videos/{videoId}/keyframes {frameIdx}`: SAM3 single frame, insert sorted,
       split `[K_i,K_{i+1}]` -> `[K_i,F]+[F,K_{i+1}]`, re-interpolate affected range only,
       update `track.json`, auto re-render.
-- [ ] Timeline shows original (hollow) + added (filled) keyframes; "Fix this frame" button.
-- [ ] Guards: reject duplicates / out-of-range.
+      (Span = [prev|0, next|end]; smoothing uses old boxes as edge context so the
+      rest stays byte-identical. Misses insert explicit nulls without touching the
+      track. Re-render reuses stored `render.json` params, else padding 0.1/auto.
+      Fix always uses the segmented prompt — prompt changes are Phase 8.)
+- [x] Timeline shows original (hollow) + added (filled) keyframes; "Fix this frame" button.
+      (Markers from `Keyframe.origin`; fix refreshes track + strip, cache-busts render.)
+- [x] Guards: reject duplicates / out-of-range. (409 dup, 400 range, 422 negative.)
 
 Files to touch: `backend/routers/videos.py`, `backend/services/track_builder.py`,
 `frontend/src/components/Timeline.tsx`.
@@ -282,14 +287,19 @@ Verify: `sam3Calls +1`, only sub-segments changed.
 ## Phase 7 — Storage Abstraction
 
 Tasks:
-- [ ] `backend/services/storage.py`: `Storage` Protocol + `FileSystemStorage`,
+- [x] `backend/services/storage.py`: `Storage` Protocol + `FileSystemStorage`,
       prep `MongoStorage` behind env flag.
-- [ ] Route all `save_video/meta/frame/mask/track/output` through interface.
+- [x] Route all `save_video/meta/frame/mask/track/output` through interface.
       Keep `uploads/`, `frames/`, `masks/`, `outputs/` paths.
 
 Files to touch: `backend/services/storage.py`, all services/routers using filesystem.
 
 Verify: Phase 1-6 flows pass unchanged with abstraction.
+
+Done 2026-10-28: 52/52 tests (46 existing unchanged + 6 storage);
+live real-data smoke (status/frames/track/output) green; on-disk layout
+byte-identical; `MongoStorage` raises `NotImplementedError` per op until
+implemented; `STORAGE_BACKEND=mongodb` fails fast at startup on static mounts.
 
 ---
 

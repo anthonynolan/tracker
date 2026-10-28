@@ -3,9 +3,7 @@
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
-from backend.config import get_settings
 from backend.services import sam3_service
 from backend.services.sam3_service import (
     BoxPixels,
@@ -20,21 +18,6 @@ from backend.services.sam3_service import (
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny.mp4"
 SAM_TEXT = (Path(__file__).parent / "fixtures" / "sam_output.txt").read_text()
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.services.video_service.DATA_DIR", tmp_path)
-    monkeypatch.setattr("backend.services.frame_service.DATA_DIR", tmp_path)
-    monkeypatch.setattr("backend.routers.videos.DATA_DIR", tmp_path)
-    monkeypatch.setenv("MODEL_API_KEY", "test-key")
-    get_settings.cache_clear()
-    try:
-        from backend.main import app
-
-        yield TestClient(app)
-    finally:
-        get_settings.cache_clear()
 
 
 def test_parse_box_and_mask_from_real_sample():

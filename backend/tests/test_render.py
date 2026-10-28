@@ -3,9 +3,7 @@
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
-from backend.config import get_settings
 from backend.services.render_service import (
     _has_audio,
     compute_crop_window,
@@ -17,21 +15,6 @@ from backend.tests.test_sam3 import _FakeSAM3
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny.mp4"
 FIXTURE_AV = Path(__file__).parent / "fixtures" / "tiny_av.mp4"
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.services.video_service.DATA_DIR", tmp_path)
-    monkeypatch.setattr("backend.services.frame_service.DATA_DIR", tmp_path)
-    monkeypatch.setattr("backend.routers.videos.DATA_DIR", tmp_path)
-    monkeypatch.setenv("MODEL_API_KEY", "test-key")
-    get_settings.cache_clear()
-    try:
-        from backend.main import app
-
-        yield TestClient(app)
-    finally:
-        get_settings.cache_clear()
 
 
 def test_window_math_padding_aspect_clamp():

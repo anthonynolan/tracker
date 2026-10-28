@@ -60,3 +60,68 @@ def _smooth(boxes: list[dict], window: int) -> list[dict]:
         smoothed.append({k: _clamp(sum(b[k] for b in boxes[lo:hi]) / count)
                          for k in ("x", "y", "w", "h")})
     return smoothed
+
+
+def insert_keyframe(boxes: list[dict], keyframes: list[dict], new: dict,
+                    total_frames: int, smooth_window: int = 5
+                    ) -> tuple[list[dict], list[dict]]:
+    """Insert a keyframe; recompute only the affected span.
+
+    `keyframes`: valid (`bbox` set) list; `new`: `{frameIdx, bbox}`.
+    Returns (new_boxes, new_sorted_keyframes[{frameIdx,bbox}]).
+    Frames outside the span [prev|0, next|end] are byte-identical; smoothing
+    inside the span uses old boxes as edge context. Raises ValueError on
+    duplicates, out-of-range frames, or missing boxes.
+    """
+    frame = new["frameIdx"]
+    if new.get("bbox") is None:
+        raise ValueError("cannot insert a keyframe without a box")
+    if not (0 <= frame < total_frames):
+        raise ValueError(f"frame {frame} out of range")
+    if any(k["frameIdx"] == frame for k in keyframes):
+        raise ValueError(f"frame {frame} is already a keyframe")
+    if len(boxes) != total_frames:
+        raise ValueError("boxes length does not match total frames")
+    ordered = sorted(keyframes, key=lambda k: k["frameIdx"])
+    prev = next((k for k in reversed(ordered) if k["frameIdx"] < frame), None)
+    nxt = next((k for k in ordered if k["frameIdx"] > frame), None)
+    lo = prev["frameIdx"] if prev else 0
+    hi = nxt["frameIdx"] if nxt else total_frames - 1
+    anchors = []
+    if prev:
+        anchors.append((prev["frameIdx"], prev["bbox"]))
+    anchors.append((frame, new["bbox"]))
+    if nxt:
+        anchors.append((nxt["frameIdx"], nxt["bbox"]))
+    fresh = list(boxes)
+    for i in range(lo, hi + 1):
+        if i <= anchors[0][0]:
+            point = dict(anchors[0][1])
+        elif i >= anchors[-1][0]:
+            point = dict(anchors[-1][1])
+        else:
+            point = None
+            for a, b in zip(anchors, anchors[1:]):
+                if a[0] <= i <= b[0]:
+                    ratio = (i - a[0]) / (b[0] - a[0])
+                    point = {k: _lerp(a[1][k], b[1][k], ratio)
+                             for k in ("x", "y", "w", "h")}
+                    break
+            assert point is not None  # anchors bracket every in-span frame
+        fresh[i] = {k: _clamp(float(v)) for k, v in point.items()}
+    if smooth_window >= 3:
+        half = smooth_window // 2
+        for i in range(lo, hi + 1):
+            span_lo, span_hi = max(0, i - half), min(total_frames, i + half + 1)
+            acc = {k: 0.0 for k in ("x", "y", "w", "h")}
+            for j in range(span_lo, span_hi):
+                src = fresh[j] if lo <= j <= hi else boxes[j]
+                for k in acc:
+                    acc[k] += src[k]
+            count = span_hi - span_lo
+            fresh[i] = {k: _clamp(acc[k] / count) for k in acc}
+    merged = sorted([*({"frameIdx": k["frameIdx"], "bbox": k["bbox"]}
+                       for k in ordered),
+                     {"frameIdx": frame, "bbox": new["bbox"]}],
+                    key=lambda k: k["frameIdx"])
+    return fresh, merged

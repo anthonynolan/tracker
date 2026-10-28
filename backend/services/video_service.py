@@ -11,11 +11,8 @@ from pathlib import Path
 
 import imageio_ffmpeg
 
-from backend.config import DATA_DIR
 from backend.models.schemas import UploadResponse, VideoMetadata
-
-UPLOAD_DIRNAME = "uploads"
-_VIDEO_ID_RE = re.compile(r"[0-9a-f]{32}")
+from backend.services import storage
 
 
 def ffmpeg_exe() -> str:
@@ -77,36 +74,25 @@ def _probe_with_ffmpeg(path: Path) -> dict:
 
 def save_upload(filename: str, content: bytes) -> UploadResponse:
     """Store an upload under a UUID, probe it, and write `meta.json`."""
+    store = storage.get_storage()
     video_id = uuid.uuid4().hex
-    target = DATA_DIR / UPLOAD_DIRNAME / video_id
-    target.mkdir(parents=True, exist_ok=False)
-    suffix = Path(filename).suffix.lower() or ".mp4"
-    original = target / f"original{suffix}"
     try:
-        original.write_bytes(content)
+        original = store.create_video(video_id, filename, content)
         meta = probe_metadata(original)
     except Exception:
-        shutil.rmtree(target, ignore_errors=True)
+        store.delete_video(video_id)
         raise
     metadata = VideoMetadata(video_id=video_id, filename=filename, **meta)
-    (target / "meta.json").write_text(metadata.model_dump_json(by_alias=True, indent=2))
+    store.write_metadata(video_id, metadata)
     return UploadResponse(video_id=video_id, metadata=metadata,
-                          original_url=f"/uploads/{video_id}/original{suffix}")
+                          original_url=f"/uploads/{video_id}/{original.name}")
 
 
 def get_metadata(video_id: str) -> VideoMetadata | None:
-    """Read `meta.json` for an upload, or `None` for unknown/malformed ids."""
-    if not _VIDEO_ID_RE.fullmatch(video_id):
-        return None
-    meta_file = DATA_DIR / UPLOAD_DIRNAME / video_id / "meta.json"
-    if not meta_file.exists():
-        return None
-    return VideoMetadata.model_validate_json(meta_file.read_text())
+    """Read stored metadata, or `None` for unknown/malformed ids."""
+    return storage.get_storage().read_metadata(video_id)
 
 
 def get_original_path(video_id: str) -> Path | None:
     """Locate the stored original file for an upload, if any."""
-    if not _VIDEO_ID_RE.fullmatch(video_id):
-        return None
-    matches = sorted((DATA_DIR / UPLOAD_DIRNAME / video_id).glob("original.*"))
-    return matches[0] if matches else None
+    return storage.get_storage().original_path(video_id)

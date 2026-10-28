@@ -8,10 +8,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from backend.config import DATA_DIR
-from backend.services import video_service
-
-FRAMES_DIRNAME = "frames"
+from backend.services import storage, video_service
 
 
 def getSampleFrameIndices(total_frames: int, num_samples: int = 15) -> list[int]:
@@ -33,11 +30,35 @@ def getSampleFrameIndices(total_frames: int, num_samples: int = 15) -> list[int]
 
 def get_display_size(video_id: str) -> tuple[int, int] | None:
     """Display-space (W, H) measured from the first extracted keyframe JPEG."""
-    frames = sorted((DATA_DIR / FRAMES_DIRNAME / video_id).glob("*.jpg"))
+    store = storage.get_storage()
+    frames = store.list_frames(video_id)
     if not frames:
         return None
-    with Image.open(frames[0]) as img:
+    with Image.open(store.frame_path(video_id, frames[0])) as img:
         return img.size
+
+
+def ensure_frame(video_id: str, frame_idx: int) -> dict | None:
+    """Extract a single frame JPEG on demand (idempotent).
+
+    Returns `{frameIdx, url}`, None for unknown video. Raises ValueError when
+    the index is out of range.
+    """
+    metadata = video_service.get_metadata(video_id)
+    if metadata is None:
+        return None
+    if not (0 <= frame_idx < metadata.total_frames):
+        raise ValueError(f"frame {frame_idx} out of range")
+    original = video_service.get_original_path(video_id)
+    if original is None:
+        return None
+    target = storage.get_storage().frame_path(video_id, frame_idx)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        _extract_frame(original, target, frame_idx / metadata.fps,
+                       1 / metadata.fps)
+    return {"frameIdx": frame_idx,
+            "url": f"/frames/{video_id}/{frame_idx:06d}.jpg"}
 
 
 def ensure_keyframes(video_id: str, num_samples: int = 15) -> list[dict] | None:
@@ -52,10 +73,13 @@ def ensure_keyframes(video_id: str, num_samples: int = 15) -> list[dict] | None:
     if original is None:
         return None
     indices = getSampleFrameIndices(metadata.total_frames, num_samples)
-    out_dir = DATA_DIR / FRAMES_DIRNAME / video_id
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if not indices:
+        return []
+    store = storage.get_storage()
+    store.frame_path(video_id, indices[0]).parent.mkdir(parents=True,
+                                                        exist_ok=True)
     for idx in indices:
-        target = out_dir / f"{idx:06d}.jpg"
+        target = store.frame_path(video_id, idx)
         if target.exists():
             continue
         _extract_frame(original, target, idx / metadata.fps, 1 / metadata.fps)

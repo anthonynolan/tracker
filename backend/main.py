@@ -6,9 +6,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import DATA_DIR
 from backend.logging_config import configure_logging
 from backend.routers import videos
+from backend.services.storage import FileSystemStorage, get_storage
 
 configure_logging()
 logger = logging.getLogger("tracker")
@@ -29,9 +29,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+_store = get_storage()
+if not isinstance(_store, FileSystemStorage):
+    raise RuntimeError(
+        "static file mounts require the filesystem storage backend")
 for _dirname in ("uploads", "frames", "masks", "outputs"):
-    _dir = DATA_DIR / _dirname
-    _dir.mkdir(parents=True, exist_ok=True)
-    app.mount(f"/{_dirname}", StaticFiles(directory=_dir), name=_dirname)
+    app.mount(f"/{_dirname}",
+              StaticFiles(directory=_store.media_dir(_dirname)), name=_dirname)
 
-logger.info("data dir: %s", DATA_DIR)
+logger.info("storage root: %s", _store.root)

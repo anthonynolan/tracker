@@ -3,20 +3,10 @@
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
 from backend.services.frame_service import _extract_frame, getSampleFrameIndices
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny.mp4"
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr("backend.services.video_service.DATA_DIR", tmp_path)
-    monkeypatch.setattr("backend.services.frame_service.DATA_DIR", tmp_path)
-    from backend.main import app
-
-    return TestClient(app)
 
 
 def test_sampling_example():
