@@ -77,6 +77,25 @@ def test_filesystem_frames_masks_track_output(tmp_path):
     assert store.media_dir("frames") == tmp_path / "frames"
 
 
+def test_filesystem_projects(tmp_path):
+    store = FileSystemStorage(tmp_path)
+    assert store.list_projects() == []
+    assert store.read_project("0" * 32) is None
+    assert store.read_project("nope") is None
+    with pytest.raises(ValueError):
+        store.write_project("nope", {})
+    pid, pid2 = "a" * 32, "b" * 32
+    store.write_project(pid, {"projectId": pid, "name": "P",
+                              "createdAt": "2026-01-02T00:00:00+00:00",
+                              "videoIds": []})
+    store.write_project(pid2, {"projectId": pid2, "name": "Q",
+                               "createdAt": "2026-01-01T00:00:00+00:00",
+                               "videoIds": ["v"]})
+    assert store.read_project(pid)["name"] == "P"
+    assert [p["projectId"] for p in store.list_projects()] == [pid2, pid]
+    assert (tmp_path / "projects" / f"{pid}.json").exists()
+
+
 def test_get_storage_defaults_to_filesystem(monkeypatch):
     monkeypatch.delenv("STORAGE_BACKEND", raising=False)
     get_settings.cache_clear()

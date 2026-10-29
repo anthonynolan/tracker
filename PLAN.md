@@ -19,7 +19,7 @@ linearly interpolate bboxes for intermediate frames.
 - **Segmentation:** SAM3 text-prompt, real API integration, key from `.env`
 - **Storage V1:** Filesystem: `data/uploads/{videoId}/`, `data/frames/{videoId}/`,
   `data/masks/{videoId}/`, `data/outputs/{videoId}/`
-- **Storage V2:** MongoDB (abstracted in Phase 7)
+- **Storage V2:** MongoDB (abstracted in Phase 7, connected in Phase 11)
 
 ## Env / Secrets
 
@@ -99,17 +99,19 @@ tracker/
 
 ## Current State (2026-10-28)
 
-- Phases 0–7 complete: upload/preview, keyframe sampling, real SAM3
+- Phases 0–9 complete: upload/preview, keyframe sampling, real SAM3
   segmentation, lerp tracking, fixed-window render, fix-frame refinement,
-  storage abstraction. 52/52 backend tests pass; frontend builds clean.
+  storage abstraction, review grid + selective re-run + projects + synced
+  playback, parallel SAM3 + README + screenshots. 67/67 backend tests pass;
+  frontend builds clean.
 - Backend: FastAPI (`backend/`); all persistence behind the `Storage`
   interface (`FileSystemStorage` default, `MongoStorage` stub behind
   `STORAGE_BACKEND`). Frontend: Vite + React + MUI (`frontend/`).
 - `data/` holds uploads/frames/masks/outputs per video; on-disk layout
   unchanged since Phase 1. No system ffmpeg/ffprobe — bundled binary via
   `imageio-ffmpeg` with ffprobe-when-available fallback.
-- Next: Phase 8 (review grid + selective re-run + projects), then Phase 9
-  (README + screenshots).
+- Next: Phase 10 (Lightsail deploy + DNS), then Phase 11 (real MongoDB,
+  dev + prod).
 
 ---
 
@@ -306,35 +308,39 @@ implemented; `STORAGE_BACKEND=mongodb` fails fast at startup on static mounts.
 
 ---
 
-## Phase 8 — Review Grid + Selective Re-run + Projects
+## ~~Phase 8 — Review Grid + Selective Re-run + Projects~~
 
 Tasks:
-- [ ] `frontend/src/components/KeyframeGrid.tsx`: responsive grid replacing the
+- [x] `frontend/src/components/KeyframeGrid.tsx`: responsive grid replacing the
       `KeyframeStrip` band. Each cell shows its keyframe + bbox overlay (or an
       explicit "no detection" state) with single / multi / select-all.
       Strip component removed once the grid lands.
-- [ ] SAM3 batch research (no code until answered): can one `/responses` call
+- [x] SAM3 batch research (no code until answered): can one `/responses` call
       take multiple images (multiple `input_image` parts,
       `video_segmentation_format`, or another endpoint)? Record the finding here.
       If batch works, segment keyframes in batches; if not, take the progressive
       path below.
-- [ ] Progressive results (no-batch path): stream per-image results to the grid
+      FINDING 2026-10-28 (spike, 2 uploads + 1 inference): one `/responses`
+      call with two `input_image` parts returns
+      `400 {"type":"invalid_request_error","message":"SAM 3 requires exactly
+      one media part"}`. No batch — taking the progressive SSE path.
+- [x] Progressive results (no-batch path): stream per-image results to the grid
       as each `segment()` completes instead of waiting for all N. Transport: SSE
       `GET /api/videos/{videoId}/segment/stream` (recommended) or polling —
       decided at implementation.
-- [ ] `POST /api/videos/{videoId}/segment/selected {prompt, frameIndices[]}`:
+- [x] `POST /api/videos/{videoId}/segment/selected {prompt, frameIndices[]}`:
       re-segment ONLY the selected keyframes with a (possibly modified) prompt,
       update `keyframes.json` for those frames, return `{keyframes, sam3Calls}`.
       Powers the fix-one-then-rerun-all loop: retry a miss solo, then re-run
       the batch with the winning prompt.
-- [ ] Projects: `backend/services/project_service.py` + `routers/projects.py`.
+- [x] Projects: `backend/services/project_service.py` + `routers/projects.py`.
       A default project is auto-created on first app use; `GET /api/projects`
       lists, `GET /api/projects/{projectId}` restores videos + keyframes +
       prompt state. Persisted through the Phase 7 `Storage` interface
       (`data/projects/{projectId}.json` under filesystem storage).
-- [ ] Frontend project switcher: default project opens automatically; user can
+- [x] Frontend project switcher: default project opens automatically; user can
       create/switch projects and resume work.
-- [ ] Synced playback for original vs rendered: one common play button drives
+- [x] Synced playback for original vs rendered: one common play button drives
       both videos on the same frame (side-by-side comparison); pause and seek
       stay in lockstep.
 
@@ -348,26 +354,124 @@ select-all re-run costs N; progressive cells populate before the run finishes
 (no-batch path); batch finding recorded; fresh start yields a default project;
 reopening a project restores its state.
 
+Done 2026-10-29: 66/66 tests (52 existing + 14 new); frontend builds clean;
+`KeyframeStrip` removed. Live smoke on a fresh upload: SSE stream 2/2 events
++ done, select-1 re-run (cumulative sam3Calls 3), projects persist on real
+data. Notes: `sam3Calls` in `keyframes.json` is cumulative video spend;
+select-all re-run adopts the new top-level prompt, partial keeps it;
+re-run auto-rebuilds track + re-renders when present (empty-valid edge leaves
+them untouched); `StatusResponse` gained `originalUrl` for resume; cropped
+audio is muted in synced playback (identical to original).
+
 ---
 
-## Phase 9 — README + Screenshots
+## ~~Phase 9 — Parallel SAM3 Calls + README + Screenshots~~
 
 Tasks:
-- [ ] Write `README.md`: what the app does, features per phase, prerequisites
+- [x] Parallelize the SAM3 fan-out: `POST /segment`, `GET /segment/stream`,
+      and `POST /segment/selected` currently `await` one frame at a time.
+      Run in-flight calls concurrently (`asyncio.gather` for the POST paths,
+      `as_completed` for the SSE stream so cells land in finish order).
+- [x] Bound concurrency with a semaphore (4 in flight — cuts N-frame wall
+      time ~4x while staying clear of rate limits) to
+      avoid API 429s; isolate per-frame failures so one frame's 502 doesn't
+      cancel the rest (same per-frame error semantics as today).
+- [x] Concurrency test with the fake service: N-frame segment issues N calls
+      with overlap (fake records max in-flight), results stay in frame order
+      on POST paths, stream still ends with `done`.
+- [x] Write `README.md`: what the app does, features per phase, prerequisites
       (`uv`, Python 3.12, Node, system or bundled ffmpeg), env setup
       (`.env` from `.env.example`), quickstart (backend + frontend commands),
       usage walkthrough (upload → prompt → segment → track → render → refine),
       project layout, troubleshooting.
-- [ ] Capture screenshots from the RUNNING app (no mockups): upload/dropzone,
+- [x] Capture screenshots from the RUNNING app (no mockups): upload/dropzone,
       segmentation grid with overlays, track timeline, render side-by-side,
       refinement. Store under `docs/screenshots/`, reference from `README.md`.
-- [ ] Re-verify every README command copy-paste fresh (clean-checkout mindset:
+- [x] Re-verify every README command copy-paste fresh (clean-checkout mindset:
       `uv sync`, backend start, `npm install`, frontend start, full flow).
 
-Files to touch: `README.md`, `docs/screenshots/*.png`.
+Files to touch: `backend/routers/videos.py`, `backend/tests/test_selective.py`,
+`README.md`, `docs/screenshots/*.png`.
 
-Verify: README quickstart works verbatim on a fresh clone (minus the `.env` key);
+Verify: N-frame segment completes in ~1/N wall time (parallelism observed);
+README quickstart works verbatim on a fresh clone (minus the `.env` key);
 screenshots match the current UI; no stale screens from older phases.
+
+Done 2026-10-29: 67/67 tests (66 + 1 concurrency: 6-frame segment shows
+max 4 in flight, POST order preserved); frontend builds clean. SSE stream
+yields in finish order, stored file re-sorted; stream errors cancel pending
+calls (no wasted SAM3 spend) and persist partials. README written with 4
+real screenshots (headless chromium + playwright; demo mp4s temporarily
+swapped to VP9 because that build lacks H.264 — originals restored
+sha256-verified). All README commands re-verified verbatim: `uv sync`,
+`uv lock --check`, `.env.example` copy, both servers boot to 200,
+`npm install` + build clean, pytest green without `PYTHONPATH`.
+
+---
+
+## Phase 10 — Deployment to Lightsail (Demo + DNS)
+
+Tasks:
+- [ ] Decide Lightsail shape (record here): single instance (VPS) with
+      docker-compose vs Lightsail Containers; region/AZ; instance size for
+      ffmpeg render load.
+- [ ] Production build: backend (uvicorn workers, `--log-config`,
+      `MODEL_API_KEY` from server env only, `STORAGE_BACKEND=filesystem` V1
+      with a data-dir backup note); frontend `npm run build` served as static
+      (via backend StaticFiles or nginx — record choice).
+- [ ] Provision: create instance, attach static IP, firewall open on
+      22/80/443 only, SSH hardening basics, install docker or system
+      python/node per chosen shape.
+- [ ] DNS: point the demo domain/subdomain at the static IP — A record in a
+      Lightsail DNS zone or the existing registrar (record registrar +
+      nameserver choice here); verify propagation with `dig`.
+- [ ] TLS: terminate HTTPS (Caddy automatic certs or certbot + nginx —
+      record choice); HTTP→HTTPS redirect; frontend API base switches to
+      same-origin `/api`.
+- [ ] Deploy flow + smoke: ship the build (push/pull or scp), start services,
+      run health/upload/segment/track/render against the public URL, confirm
+      no key leakage in responses or logs.
+- [ ] Ops notes: log location/rotation, restart-on-reboot policy, `data/`
+      backup story (filesystem V1 until Phase 11), monthly cost check.
+
+Files to touch: `Dockerfile`/`docker-compose.prod.yml` (new),
+`frontend/vite.config.ts` (prod base), `backend/main.py` (static serve if
+chosen), `docs/deploy.md` (new runbook).
+
+Verify: public `https://<demo-host>/health` OK; full upload→render flow works
+in a fresh browser; `http://` redirects to `https://`; services auto-start
+after a reboot.
+
+---
+
+## Phase 11 — Real MongoDB (dev + prod)
+
+Tasks:
+- [ ] Implement `MongoStorage` against the Phase 7 `Storage` protocol:
+      binaries (originals, frames, masks, outputs) via GridFS or object refs
+      (record the strategy here); meta/keyframes/track/render-params as
+      documents; same id validation + miss semantics as filesystem.
+- [ ] Separate schemas per env: dev database `tracker`, prod database
+      `tracker_prod` (overridable via `MONGO_DATABASE`); connect via
+      `MONGO_URL` (+ auth/TLS for prod; secrets never in repo).
+- [ ] Parity + migration: conformance tests running the same flow suite
+      against BOTH backends; one-shot `data/` → Mongo import script for
+      existing dev videos (additive; filesystem left untouched); prod starts
+      empty or imports a chosen set.
+- [ ] Cutover: dev flips to `STORAGE_BACKEND=mongodb` first and re-verifies
+      Phases 1–6 flows; then prod flips (during a maintenance note); static
+      mounts route through storage-backed file serving instead of direct
+      `/uploads` etc. paths — record the serving design.
+- [ ] Rollback: document flip-back to filesystem (env change + restart) and
+      the data-loss boundary (writes after cutover live only in Mongo).
+
+Files to touch: `backend/services/storage.py`, `backend/main.py`
+(mounts/serving), `backend/tests/test_storage.py` (+ conformance),
+`scripts/import_to_mongo.py` (new), `docs/deploy.md` (prod cutover notes).
+
+Verify: full suite passes against BOTH backends; dev app on Mongo completes
+upload→render; prod cutover verified from the public URL; rollback procedure
+tested once in dev.
 
 ---
 

@@ -10,11 +10,12 @@ wheels/
 .venv
 .env
 
-# Project data (video uploads, frames, masks, outputs)
+# Project data (video uploads, frames, masks, outputs, projects)
 data/uploads/
 data/frames/
 data/masks/
 data/outputs/
+data/projects/
 
 # Frontend
 node_modules/

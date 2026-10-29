@@ -29,6 +29,7 @@ class StatusResponse(BaseModel):
     video_id: str = Field(alias="videoId")
     status: str
     metadata: VideoMetadata
+    original_url: str = Field(alias="originalUrl")
 
 
 class FrameRef(BaseModel):
@@ -132,3 +133,40 @@ class FixKeyframeResponse(BaseModel):
     track_rebuilt: bool = Field(alias="trackRebuilt")
     rerendered: bool
     output_url: str | None = Field(default=None, alias="outputUrl")
+
+
+class SegmentSelectedRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    prompt: str = Field(min_length=1)
+    frame_indices: list[int] = Field(min_length=1, alias="frameIndices")
+
+
+class Project(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    project_id: str = Field(alias="projectId")
+    name: str
+    created_at: str = Field(alias="createdAt")
+    video_ids: list[str] = Field(default_factory=list, alias="videoIds")
+
+
+class ProjectListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    projects: list[Project]
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class ProjectVideo(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    video_id: str = Field(alias="videoId")
+    metadata: VideoMetadata
+
+
+class ProjectDetail(Project):
+    videos: list[ProjectVideo]

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.logging_config import configure_logging
-from backend.routers import videos
+from backend.routers import projects, videos
 from backend.services.storage import FileSystemStorage, get_storage
 
 configure_logging()
@@ -22,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(videos.router)
+app.include_router(projects.router)
 
 
 @app.get("/health")

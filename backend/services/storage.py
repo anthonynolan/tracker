@@ -24,6 +24,10 @@ def _valid_video_id(video_id: str) -> bool:
     return _VIDEO_ID_RE.fullmatch(video_id) is not None
 
 
+# Project ids share the uuid-hex shape.
+_valid_project_id = _valid_video_id
+
+
 class Storage(Protocol):
     """Persistence for videos, frames, masks, tracks, outputs."""
 
@@ -43,6 +47,9 @@ class Storage(Protocol):
     def output_exists(self, video_id: str) -> bool: ...
     def write_render_params(self, video_id: str, payload: dict) -> None: ...
     def read_render_params(self, video_id: str) -> dict | None: ...
+    def write_project(self, project_id: str, payload: dict) -> None: ...
+    def read_project(self, project_id: str) -> dict | None: ...
+    def list_projects(self) -> list[dict]: ...
 
 
 class FileSystemStorage(Storage):
@@ -151,6 +158,29 @@ class FileSystemStorage(Storage):
         if not path.exists():
             return None
         return json.loads(path.read_text())
+
+    def write_project(self, project_id: str, payload: dict) -> None:
+        if not _valid_project_id(project_id):
+            raise ValueError(f"malformed projectId: {project_id!r}")
+        target = self.root / "projects"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / f"{project_id}.json").write_text(json.dumps(payload, indent=2))
+
+    def read_project(self, project_id: str) -> dict | None:
+        if not _valid_project_id(project_id):
+            return None
+        path = self.root / "projects" / f"{project_id}.json"
+        if not path.exists():
+            return None
+        return json.loads(path.read_text())
+
+    def list_projects(self) -> list[dict]:
+        target = self.root / "projects"
+        if not target.exists():
+            return []
+        projects = [json.loads(p.read_text())
+                    for p in sorted(target.glob("*.json"))]
+        return sorted(projects, key=lambda p: p.get("createdAt", ""))
 
 
 class MongoStorage:
