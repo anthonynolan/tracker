@@ -100,6 +100,12 @@ SAM3 cost model: N keyframes = N calls (max 4 in flight); each fix or
 re-run cell = 1 call. Video never leaves the machine — only keyframe JPEGs
 are uploaded, one per call.
 
+## Storage backends
+
+Filesystem (`data/`) by default. For MongoDB (local or Atlas), see
+[docs/mongo.md](docs/mongo.md): set `STORAGE_BACKEND=mongodb`, import with
+`scripts/import_to_mongo.py`, restart.
+
 ## Project layout
 
 ```text
@@ -145,7 +151,6 @@ tracker/
 ## Roadmap
 
 - Phase 10: Lightsail deployment (instance + static IP + DNS + TLS runbook)
-- Phase 11: real MongoDB behind the storage interface (`tracker` dev /
-  `tracker_prod` prod databases)
+- Phase 11: real MongoDB — done (see [docs/mongo.md](docs/mongo.md))
 
 See `PROJECT.md` / `PLAN.md` for the full phase history and decisions.

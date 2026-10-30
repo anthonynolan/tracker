@@ -56,6 +56,7 @@ def _keyframe_from_seg(store: storage.Storage, video_id: str, frame_idx: int,
     mask_name = f"{frame_idx:06d}.png"
     save_mask_png(store.mask_path(video_id, frame_idx),
                   seg.mask_raster, seg.width, seg.height)
+    store.sync_media("masks", video_id, mask_name)
     return Keyframe(frame_idx=frame_idx, timestamp=timestamp, bbox=seg.bbox,
                     mask_path=f"/masks/{video_id}/{mask_name}", prompt=prompt,
                     confidence=None, origin=origin)
@@ -152,6 +153,7 @@ async def render_video(video_id: str, req: RenderRequest) -> RenderResponse:
             original, store.output_path(video_id),
             track["interpolatedBoxes"], display[0], display[1], metadata.fps,
             padding=req.padding, aspect_ratio=req.aspect_ratio)
+        store.sync_media("outputs", video_id, "cropped.mp4")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -197,6 +199,7 @@ async def fix_keyframe(video_id: str, req: FixKeyframeRequest) -> FixKeyframeRes
         mask_name = f"{req.frame_idx:06d}.png"
         save_mask_png(store.mask_path(video_id, req.frame_idx),
                       seg.mask_raster, seg.width, seg.height)
+        store.sync_media("masks", video_id, mask_name)
         keyframe = Keyframe(
             frame_idx=req.frame_idx, timestamp=req.frame_idx / metadata.fps,
             bbox=seg.bbox, mask_path=f"/masks/{video_id}/{mask_name}",
@@ -232,6 +235,7 @@ async def fix_keyframe(video_id: str, req: FixKeyframeRequest) -> FixKeyframeRes
                 original, cropped, new_boxes, display[0], display[1],
                 metadata.fps, padding=params.get("padding", 0.1),
                 aspect_ratio=params.get("aspectRatio"))
+            store.sync_media("outputs", video_id, "cropped.mp4")
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=500,
                                 detail=f"re-render failed: {exc}") from exc
@@ -412,6 +416,7 @@ async def segment_selected(video_id: str,
                     original, store.output_path(video_id), boxes, display[0],
                     display[1], metadata.fps, padding=params.get("padding", 0.1),
                     aspect_ratio=params.get("aspectRatio"))
+                store.sync_media("outputs", video_id, "cropped.mp4")
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(status_code=500,
                                     detail=f"re-render failed: {exc}") from exc

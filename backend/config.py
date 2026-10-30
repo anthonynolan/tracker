@@ -16,8 +16,14 @@ class Settings(BaseSettings):
 
     model_api_key: SecretStr = Field(alias="MODEL_API_KEY")
     storage_backend: Literal["filesystem", "mongodb"] = "filesystem"
-    mongo_url: str = "mongodb://localhost:27017"
+    # Full MongoDB URL override. When unset, built from MONGODB_* parts
+    # (Atlas SRV when a host is set, else localhost).
+    mongo_url: str | None = None
     mongo_database: str = "tracker"
+    mongodb_user: str | None = Field(default=None, alias="MONGODB_USER")
+    mongodb_password: SecretStr | None = Field(default=None,
+                                               alias="MONGODB_PASSWORD")
+    mongodb_host: str | None = Field(default=None, alias="MONGODB_HOST")
 
 
 @lru_cache

@@ -10,7 +10,7 @@ We minimize SAM3 cost by sampling evenly-spaced keyframes, segmenting those, and
 - **Backend:** Python + FastAPI, ffmpeg for extract / re-encode; `uv` manages the Python env and deps (project-local `.venv`, `uv.lock`), no direct pip
 - **Segmentation:** SAM3 with text-prompt - real API integration, key from .env
 - **Storage V1:** File system (relative to repo root): data/uploads/{videoId}/, data/frames/{videoId}/, data/masks/{videoId}/, data/outputs/{videoId}/
-- **Storage V2:** MongoDB (abstracted)
+- **Storage V2:** MongoDB (connected, Phase 11: GridFS media + doc collections, Atlas-ready)
 
 ## Env / Secrets
 - API key is in `.env` file at repo root: `MODEL_API_KEY=...`
@@ -88,9 +88,18 @@ GET /api/projects, POST /api/projects, GET /api/projects/{projectId}
 - Projects with auto-created default; reopen and resume work
 - Synced original/rendered playback: one play button, same frame both sides
 
-### Phase 9: README + Screenshots
+### Phase 9: Parallel SAM3 Calls + README + Screenshots
+- Bounded-concurrent SAM3 fan-out (4 in flight; gather for POST, as_completed for SSE)
 - README: setup, quickstart, walkthrough, layout, troubleshooting
 - Screenshots captured from the running app under docs/screenshots/
+
+### Phase 10: Deployment to Lightsail (Demo + DNS)
+- Instance + static IP + firewall, DNS A record, TLS, deploy-and-smoke flow, ops notes
+
+### Phase 11: Real MongoDB (dev + prod)
+- MongoStorage on the Phase 7 protocol: GridFS `media` bucket + doc collections, write-through cache
+- Atlas via MONGODB_USER/PASSWORD/HOST parts (or MONGO_URL); `tracker` dev / `tracker_prod` prod
+- Import script, conformance suite, storage-backed media serving, cutover + rollback runbook
 
 ## Constraints
 - Work ONE phase at a time. Stop and wait for approval.

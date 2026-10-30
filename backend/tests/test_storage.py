@@ -8,7 +8,7 @@ import pytest
 from backend.config import get_settings
 from backend.models.schemas import VideoMetadata
 from backend.services.storage import (
-    FileSystemStorage, MongoStorage, get_storage)
+    FileSystemStorage, MongoStorage, build_mongo_url, get_storage)
 
 VID = "f" * 32
 
@@ -109,18 +109,56 @@ def test_get_storage_defaults_to_filesystem(monkeypatch):
         get_storage.cache_clear()
 
 
-def test_get_storage_mongodb_selected_but_unimplemented(monkeypatch):
+def test_get_storage_mongodb_builds_lazy_client(monkeypatch):
     monkeypatch.setenv("STORAGE_BACKEND", "mongodb")
+    # Blank (not deleted): real .env values must not leak through.
+    monkeypatch.setenv("MONGO_URL", "")
+    monkeypatch.setenv("MONGODB_HOST", "")
     get_settings.cache_clear()
     get_storage.cache_clear()
     try:
         store = get_storage()
         assert isinstance(store, MongoStorage)
-        with pytest.raises(NotImplementedError):
-            store.read_metadata(VID)
+        assert store.database_name == "tracker"
     finally:
         get_settings.cache_clear()
         get_storage.cache_clear()
+
+
+def _mongo_settings(monkeypatch, **env):
+    # Blank (not deleted): process env overrides the .env file, so blanks
+    # isolate these tests from real local credentials.
+    for key in ("MONGO_URL", "MONGO_DATABASE", "MONGODB_USER",
+                "MONGODB_PASSWORD", "MONGODB_HOST"):
+        monkeypatch.setenv(key, "")
+    monkeypatch.setenv("MONGO_DATABASE", "tracker")
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    get_settings.cache_clear()
+    try:
+        return get_settings()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_build_mongo_url_defaults_localhost(monkeypatch):
+    assert build_mongo_url(_mongo_settings(monkeypatch)) == \
+        "mongodb://localhost:27017/"
+
+
+def test_build_mongo_url_override_wins(monkeypatch):
+    settings = _mongo_settings(monkeypatch, MONGO_URL="mongodb://custom:27018/",
+                               MONGODB_HOST="cluster0.abc.mongodb.net")
+    assert build_mongo_url(settings) == "mongodb://custom:27018/"
+
+
+def test_build_mongo_url_atlas_parts(monkeypatch):
+    settings = _mongo_settings(monkeypatch, MONGODB_USER="  u  ",
+                               MONGODB_PASSWORD="p@ss/word!",
+                               MONGODB_HOST="cluster0.abc.mongodb.net/")
+    assert build_mongo_url(settings) == (
+        "mongodb+srv://u:p%40ss%2Fword%21@cluster0.abc.mongodb.net"
+        "?authSource=admin&retryWrites=true&w=majority")
 
 
 def test_get_storage_rejects_unknown_backend(monkeypatch):

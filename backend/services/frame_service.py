@@ -52,11 +52,13 @@ def ensure_frame(video_id: str, frame_idx: int) -> dict | None:
     original = video_service.get_original_path(video_id)
     if original is None:
         return None
-    target = storage.get_storage().frame_path(video_id, frame_idx)
+    store = storage.get_storage()
+    target = store.frame_path(video_id, frame_idx)
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists():
         _extract_frame(original, target, frame_idx / metadata.fps,
                        1 / metadata.fps)
+        store.sync_media("frames", video_id, target.name)
     return {"frameIdx": frame_idx,
             "url": f"/frames/{video_id}/{frame_idx:06d}.jpg"}
 
@@ -83,6 +85,7 @@ def ensure_keyframes(video_id: str, num_samples: int = 15) -> list[dict] | None:
         if target.exists():
             continue
         _extract_frame(original, target, idx / metadata.fps, 1 / metadata.fps)
+        store.sync_media("frames", video_id, target.name)
     return [{"frameIdx": idx, "url": f"/frames/{video_id}/{idx:06d}.jpg"}
             for idx in indices]
 

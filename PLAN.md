@@ -99,19 +99,19 @@ tracker/
 
 ## Current State (2026-10-28)
 
-- Phases 0–9 complete: upload/preview, keyframe sampling, real SAM3
-  segmentation, lerp tracking, fixed-window render, fix-frame refinement,
-  storage abstraction, review grid + selective re-run + projects + synced
-  playback, parallel SAM3 + README + screenshots. 67/67 backend tests pass;
-  frontend builds clean.
+- Phases 0–9 + 11 complete (10 pending): app through parallel SAM3 +
+  README + screenshots, plus real MongoDB (GridFS media, Atlas parts,
+  import script, conformance suite, runbook). 77/77 backend tests pass
+  with local mongod (6 skip without); frontend untouched since Phase 9.
+  Atlas live flip still needs MONGODB_HOST + allowlisted network.
 - Backend: FastAPI (`backend/`); all persistence behind the `Storage`
   interface (`FileSystemStorage` default, `MongoStorage` stub behind
   `STORAGE_BACKEND`). Frontend: Vite + React + MUI (`frontend/`).
 - `data/` holds uploads/frames/masks/outputs per video; on-disk layout
   unchanged since Phase 1. No system ffmpeg/ffprobe — bundled binary via
   `imageio-ffmpeg` with ffprobe-when-available fallback.
-- Next: Phase 10 (Lightsail deploy + DNS), then Phase 11 (real MongoDB,
-  dev + prod).
+- Next: Phase 10 (Lightsail deploy + DNS). Atlas live verify first if
+  MONGODB_HOST lands before then.
 
 ---
 
@@ -444,25 +444,35 @@ after a reboot.
 
 ---
 
-## Phase 11 — Real MongoDB (dev + prod)
+## ~~Phase 11 — Real MongoDB (dev + prod)~~
 
 Tasks:
-- [ ] Implement `MongoStorage` against the Phase 7 `Storage` protocol:
+- [x] Implement `MongoStorage` against the Phase 7 `Storage` protocol:
       binaries (originals, frames, masks, outputs) via GridFS or object refs
       (record the strategy here); meta/keyframes/track/render-params as
       documents; same id validation + miss semantics as filesystem.
-- [ ] Separate schemas per env: dev database `tracker`, prod database
+      STRATEGY (implemented): `media` GridFS bucket, files named
+      `{kind}/{videoId}/{name}` with `{videoId, kind}` metadata; docs in
+      `videos`/`keyframes`/`tracks`/`renders`/`projects`; write-through
+      cache under `data/.mongo-cache/{database}/` so ffmpeg/PIL/FileResponse
+      keep working on paths.
+- [x] Separate schemas per env: dev database `tracker`, prod database
       `tracker_prod` (overridable via `MONGO_DATABASE`); connect via
       `MONGO_URL` (+ auth/TLS for prod; secrets never in repo).
-- [ ] Parity + migration: conformance tests running the same flow suite
+- [x] Parity + migration: conformance tests running the same flow suite
       against BOTH backends; one-shot `data/` → Mongo import script for
       existing dev videos (additive; filesystem left untouched); prod starts
       empty or imports a chosen set.
-- [ ] Cutover: dev flips to `STORAGE_BACKEND=mongodb` first and re-verifies
+- [x] Cutover: dev flips to `STORAGE_BACKEND=mongodb` first and re-verifies
       Phases 1–6 flows; then prod flips (during a maintenance note); static
       mounts route through storage-backed file serving instead of direct
       `/uploads` etc. paths — record the serving design.
-- [ ] Rollback: document flip-back to filesystem (env change + restart) and
+      SERVING (implemented): filesystem keeps StaticFiles; mongo includes
+      `routers/media.py` LAST — `GET /{kind}/{id}/{name}` from GridFS with
+      single-range 206 support, identical URLs. Atlas live flip verified
+      pending MONGODB_HOST + allowlisted network (see Done note); prod flip
+      waits on Phase 10.
+- [x] Rollback: document flip-back to filesystem (env change + restart) and
       the data-loss boundary (writes after cutover live only in Mongo).
 
 Files to touch: `backend/services/storage.py`, `backend/main.py`
@@ -472,6 +482,19 @@ Files to touch: `backend/services/storage.py`, `backend/main.py`
 Verify: full suite passes against BOTH backends; dev app on Mongo completes
 upload→render; prod cutover verified from the public URL; rollback procedure
 tested once in dev.
+
+Done 2026-10-30 (dev-local verified; Atlas-live + prod pending): 77/77 with
+local mongod 6.0 (6 mongo tests skip cleanly without one); `uv add pymongo`.
+Conformance suite uploads→segments→tracks→renders→serves (incl. 206 ranges)
+on MongoDB; import script moved 14 real videos (100 frames, 58 masks,
+3 outputs, 2 projects) into a scratch db and the flipped app read them all
+back. Atlas path implemented (SRV from MONGODB_USER/PASSWORD/HOST,
+authSource=admin, quoted password; builder tolerates a pasted trailing
+slash and fixed an empty-path SRV rejection found live). Sandbox cannot
+reach Atlas (no raw DNS/TCP egress: SRV unresolvable, node IPs unreachable),
+so the live flip is user-side: add MONGODB_HOST, run
+`scripts/import_to_mongo.py`, flip STORAGE_BACKEND, smoke per docs/mongo.md.
+Runbook lives in docs/mongo.md (not docs/deploy.md — Phase 10 not started).
 
 ---
 
